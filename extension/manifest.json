@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "天天象棋 Pikafish 分析助手",
+  "version": "2.0.0",
+  "description": "识别天天象棋网页棋盘，通过本机 Pikafish 分析局面。",
+  "minimum_chrome_version": "111",
+  "host_permissions": ["http://127.0.0.1:8765/*"],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://h5login.qqchess.qq.com/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://h5login.qqchess.qq.com/*"],
+      "js": ["main.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ]
+}

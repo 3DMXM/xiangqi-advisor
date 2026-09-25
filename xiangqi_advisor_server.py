@@ -1,4 +1,4 @@
-"""Local HTTP service that connects the userscript to Pikafish."""
+"""Local HTTP service that connects the browser extension to Pikafish."""
 
 from __future__ import annotations
 
@@ -115,16 +115,11 @@ class AdvisorHandler(BaseHTTPRequestHandler):
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Access-Control-Allow-Origin", "https://h5login.qqchess.qq.com")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.end_headers()
             self.wfile.write(body)
         except (ConnectionError, TimeoutError):
             # 网页切换局面时会主动取消旧请求；此时连接关闭是预期行为。
             pass
-
-    def do_OPTIONS(self) -> None:
-        self.send_json(200, {"ok": True})
 
     def do_GET(self) -> None:
         if self.path == "/health":

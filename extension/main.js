@@ -1,17 +1,7 @@
-// ==UserScript==
-// @name         天天象棋局面分析助手
-// @namespace    codex.local
-// @version      1.0.3
-// @description  识别人机及真人对战棋盘，使用本机 Pikafish 推荐走法，并可选择自动落子。
-// @match        https://h5login.qqchess.qq.com/*
-// @run-at       document-idle
-// @grant        GM_xmlhttpRequest
-// @grant        unsafeWindow
-// @connect      127.0.0.1
-// ==/UserScript==
-
 (() => {
   'use strict';
+
+  if (document.getElementById('xqa-panel')) return;
 
   const START_FEN = 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w';
   const PIECES = [
@@ -20,9 +10,40 @@
   ];
   const glyph = Object.fromEntries(PIECES);
   const SKIN_TYPES = { Shuai: 'K', Shi: 'A', Xiang: 'B', Ma: 'N', Ju: 'R', Pao: 'C', Bing: 'P' };
-  const SERVER_URL = 'http://127.0.0.1:8765/analyze';
   const MATE = 1000000;
-  const gameWindow = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
+  const gameWindow = window;
+  const pendingAnalyses = new Map();
+  let nextAnalysisId = 0;
+  window.addEventListener('message', event => {
+    const message = event.data;
+    if (event.source !== window || message?.source !== 'xqa-extension-bridge' || message.kind !== 'analysis-result') return;
+    const pending = pendingAnalyses.get(message.id);
+    if (!pending) return;
+    pendingAnalyses.delete(message.id);
+    clearTimeout(pending.timer);
+    if (message.error === 'timeout') pending.ontimeout();
+    else if (message.error) pending.onerror();
+    else pending.onload({ status: message.status, responseText: JSON.stringify(message.body) });
+  });
+
+  function requestAnalysis({ fen, timeMs, onload, onerror, ontimeout }) {
+    const id = String(++nextAnalysisId);
+    const cancel = () => window.postMessage({ source: 'xqa-extension-page', kind: 'cancel', id }, location.origin);
+    const timer = setTimeout(() => {
+      if (!pendingAnalyses.delete(id)) return;
+      cancel();
+      ontimeout();
+    }, timeMs + 5000);
+    pendingAnalyses.set(id, { timer, onload, onerror, ontimeout });
+    window.postMessage({ source: 'xqa-extension-page', kind: 'analyze', id, fen, timeMs }, location.origin);
+    return {
+      abort() {
+        if (!pendingAnalyses.delete(id)) return;
+        clearTimeout(timer);
+        cancel();
+      }
+    };
+  }
   const panel = document.createElement('section');
   panel.id = 'xqa-panel';
   panel.innerHTML = `
@@ -564,11 +585,8 @@
         panel.querySelector('[data-board-advice]').textContent = retry ? '分析服务未连接' : '分析失败';
         showError(error);
       };
-      analysisRequest = GM_xmlhttpRequest({
-        method: 'POST', url: SERVER_URL,
-        headers: { 'Content-Type': 'application/json' },
-        data: JSON.stringify({ fen: makeFen(), time_ms: timeMs }),
-        timeout: timeMs + 5000,
+      analysisRequest = requestAnalysis({
+        fen: makeFen(), timeMs,
         onload: response => {
           if (generation !== analysisGeneration) return;
           analysisRequest = null;
